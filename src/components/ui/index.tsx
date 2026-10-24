@@ -173,7 +173,8 @@ export function Table({ head, children, empty }: { head: ReactNode[]; children: 
 }
 
 export function Td({ children, className }: { children?: ReactNode; className?: string }) {
-  return <td className={cx("whitespace-nowrap px-3 py-2 align-top", className)}>{children}</td>;
+  // Cells don't wrap unless the caller sets its own whitespace utility (class order can't override it in Tailwind v4).
+  return <td className={cx(!className?.includes("whitespace-") && "whitespace-nowrap", "px-3 py-2 align-top", className)}>{children}</td>;
 }
 
 export function Tabs({ base, current, tabs }: { base: string; current: string; tabs: { key: string; label: string; count?: number }[] }) {
