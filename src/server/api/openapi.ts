@@ -40,6 +40,7 @@ export const ENDPOINTS: Ep[] = [
   { method: "get", path: "/attention", summary: "Exception-first worklist with evidence", tag: "Exceptions" },
   { method: "post", path: "/shipments/{id}/documents", summary: "Upload a document or new version (multipart)", tag: "Documents", permission: "document.upload", multipart: true },
   { method: "get", path: "/shipments/{id}/documents", summary: "List shipment documents", tag: "Documents", permission: "document.read" },
+  { method: "get", path: "/org/documents", summary: "List organization documents", tag: "Documents", permission: "document.read" },
   { method: "post", path: "/org/documents", summary: "Upload an organization document (insurance, authority)", tag: "Documents", permission: "document.upload", multipart: true },
   { method: "get", path: "/documents/{id}", summary: "Document with version history and extractions", tag: "Documents", permission: "document.read" },
   { method: "post", path: "/documents/{id}/review", summary: "Approve or reject a document", tag: "Documents", permission: "document.review" },
