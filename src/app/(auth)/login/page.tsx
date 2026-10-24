@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reason?: string }> }) {
   const sp = await searchParams;
   const auth = await currentAuth();
-  if (auth?.active && sp.reason !== "no-org") redirect("/command");
+  if (auth?.active && sp.reason !== "no-org") redirect("/");
   const next = sp.next?.startsWith("/") && !sp.next.startsWith("//") ? sp.next : "/command";
   return (
     <>

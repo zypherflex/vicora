@@ -300,14 +300,15 @@ export function MilestoneForm({ shipmentId, legId, status, compact }: { shipment
         run(async () => {
           let podDocumentId: string | null = null;
           if (to === "DELIVERED") {
-            if (!podFile) throw new Error("Attach a photo or PDF of the signed proof of delivery.");
-            if (!signer.trim()) throw new Error("Enter the name of the person who signed.");
-            const form = new FormData();
-            form.set("file", podFile);
-            form.set("category", "POD");
-            form.set("title", "Proof of delivery");
-            const up = await api<{ documentId: string }>(`/shipments/${shipmentId}/documents`, { form });
-            podDocumentId = up.documentId;
+            if (!podFile && !signer.trim()) throw new Error("Attach the signed proof of delivery or enter the receiver's name.");
+            if (podFile) {
+              const form = new FormData();
+              form.set("file", podFile);
+              form.set("category", "PROOF_OF_DELIVERY");
+              form.set("title", "Proof of delivery");
+              const up = await api<{ documentId: string }>(`/shipments/${shipmentId}/documents`, { form });
+              podDocumentId = up.documentId;
+            }
           }
           const pos = await position();
           return api(`/shipments/${shipmentId}/legs/${legId}/milestones`, {
@@ -399,7 +400,7 @@ export function LocationReporter({ shipmentId, legId }: { shipmentId: string; le
 
 /* ------------------------------------------------------------------ Documents */
 
-export function UploadForm({ shipmentId, canInternal, documentId }: { shipmentId: string; canInternal: boolean; documentId?: string }) {
+export function UploadForm({ shipmentId, canInternal, documentId, defaultCategory = "OTHER" }: { shipmentId: string; canInternal: boolean; documentId?: string; defaultCategory?: string }) {
   const { pending, error, ok, run } = useSubmit();
   return (
     <form
@@ -416,7 +417,7 @@ export function UploadForm({ shipmentId, canInternal, documentId }: { shipmentId
         <input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.txt,.csv" className="block w-full text-sm" />
       </Field>
       <Field label="Category">
-        <select name="category" className="field">
+        <select name="category" className="field" defaultValue={defaultCategory}>
           {DOCUMENT_CATEGORIES.map((c) => (
             <option key={c.key} value={c.key}>
               {c.label}

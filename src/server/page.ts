@@ -19,7 +19,7 @@ export async function requireAuth(): Promise<AuthState> {
  */
 export async function load<T>(fn: (ctx: Ctx) => Promise<T>, opts: { need?: Permission } = {}): Promise<T> {
   const auth = await requireAuth();
-  if (!auth.active) redirect("/login?reason=no-org");
+  if (!auth.active) redirect(auth.user.isPlatformAdmin ? "/admin" : "/login?reason=no-org");
   if (opts.need && !auth.active.permissions.has(opts.need)) notFound();
   try {
     return await runAs(auth, await pageMeta(), fn);

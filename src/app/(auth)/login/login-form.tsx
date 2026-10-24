@@ -13,7 +13,7 @@ export function LoginForm({ next }: { next: string }) {
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
-        run(() => api("/auth/login", { body: { email: f.get("email"), password: f.get("password") } }), undefined, () => router.push(next));
+        run(() => api("/auth/login", { body: { email: f.get("email"), password: f.get("password") } }), undefined, () => router.push(next === "/command" ? "/" : next));
       }}
     >
       <Field label="Email">

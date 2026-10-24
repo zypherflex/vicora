@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { LazyShipmentMap } from "@/components/map/lazy";
 import { AttentionList } from "@/components/shipments/attention-list";
 import { ShipmentFilters } from "@/components/shipments/filters";
@@ -22,6 +23,7 @@ export default async function CommandCenter({ searchParams }: { searchParams: Pr
   const status = SHIPMENT_STATUSES.includes(sp.status as ShipmentStatus) ? (sp.status as ShipmentStatus) : undefined;
   const serviceType = SERVICE_TYPES.includes(sp.serviceType as never) ? sp.serviceType : undefined;
   const { rows, attention, views, tz, canBook } = await load(async (ctx) => {
+    if (ctx.roles.every((r) => r === "DRIVER")) redirect("/driver");
     const [rows, attention, views] = await Promise.all([listShipments(ctx, { q: sp.q?.slice(0, 100), status, serviceType, limit: 200 }), attentionFor(ctx), listSavedViews(ctx)]);
     return { rows, attention, views, tz: ctx.org.timezone, canBook: can(ctx, "shipment.create") };
   });
