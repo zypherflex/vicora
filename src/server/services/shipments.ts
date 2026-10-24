@@ -53,7 +53,7 @@ export async function createShipment(ctx: Ctx, input: CreateShipmentInput) {
 
   const totalWeightLb = input.items.reduce((s, i) => s + i.weightLb, 0) || null;
   const totalPieces = input.items.reduce((s, i) => s + i.quantity, 0) || null;
-  const intl = input.international ?? {};
+  const intl: Partial<NonNullable<CreateShipmentInput["international"]>> = input.international ?? {};
 
   const [shipment] = await ctx.db
     .insert(shipments)

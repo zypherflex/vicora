@@ -17,7 +17,7 @@ const schema = z.object({
   PAYMENTS_PROVIDER: z.enum(["sandbox", "stripe"]).default("sandbox"),
   PAYMENTS_WEBHOOK_SECRET: z.string().min(16).default("dev_only_sandbox_webhook_secret"),
   ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
+  ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
   EMAIL_PROVIDER: z.enum(["outbox", "none"]).default("outbox"),
   JOBS_IN_PROCESS: z
     .enum(["true", "false"])
