@@ -753,6 +753,16 @@ export interface ExtractedField {
   source: { page: number | null; snippet: string; start?: number; end?: number };
 }
 
+export interface ExtractedLineItem {
+  partNumber: string | null;
+  description: string;
+  quantity: number | null;
+  unitPrice: string | null;
+  amount: string | null;
+  countryOfOrigin: string | null;
+  source: { page: number | null; snippet: string };
+}
+
 export const documentExtractions = pgTable(
   "document_extractions",
   {
@@ -766,6 +776,8 @@ export const documentExtractions = pgTable(
     warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
     reviewStatus: reviewStatusEnum("review_status").notNull().default("PENDING_REVIEW"),
     approvedFields: jsonb("approved_fields").$type<Record<string, string>>(),
+    /** Invoice line items found in the document, each with its source citation. Drafts until approved. */
+    lineItems: jsonb("line_items").$type<ExtractedLineItem[]>().notNull().default([]),
     reviewedBy: uuid("reviewed_by").references(() => users.id),
     reviewedAt: ts("reviewed_at"),
     error: text("error"),
@@ -799,7 +811,15 @@ export const customsEntries = pgTable(
     id: id(),
     shipmentId: uuid("shipment_id").notNull().references(() => shipments.id, { onDelete: "cascade" }),
     brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    clientId: uuid("client_id"),
     status: customsStatusEnum("status").notNull().default("INTAKE"),
+    /** Entered by the broker; Vicora does not assign CBP entry numbers. */
+    entryNumber: text("entry_number"),
+    /** CBP entry type code as entered by the broker (e.g. "01"). */
+    entryType: text("entry_type"),
+    modeOfTransport: text("mode_of_transport", { enum: ["OCEAN", "AIR", "TRUCK", "RAIL"] }).notNull().default("OCEAN"),
+    vesselDepartureAt: ts("vessel_departure_at"),
+    releasedAt: ts("released_at"),
     assignedToUserId: uuid("assigned_to_user_id").references(() => users.id),
     portOfEntry: text("port_of_entry"),
     arrivalAt: ts("arrival_at"),
@@ -823,8 +843,14 @@ export const customsEntries = pgTable(
 export const customsLines = pgTable("customs_lines", {
   id: id(),
   entryId: uuid("entry_id").notNull().references(() => customsEntries.id, { onDelete: "cascade" }),
+  lineNumber: integer("line_number").notNull().default(0),
+  partNumber: text("part_number"),
   description: text("description").notNull(),
   htsCode: text("hts_code"),
+  /** The approved library item this classification came from, if any. */
+  classificationItemId: uuid("classification_item_id"),
+  /** Ad valorem rate entered by the broker, in basis points (e.g. 450 = 4.5%). Used only for estimates. */
+  dutyRateBp: integer("duty_rate_bp"),
   quantity: integer("quantity"),
   valueMinor: minor("value_minor"),
   countryOfOrigin: text("country_of_origin"),
@@ -833,6 +859,166 @@ export const customsLines = pgTable("customs_lines", {
   reviewedAt: ts("reviewed_at"),
   sourceExtractionId: uuid("source_extraction_id"),
 });
+
+/** A broker's importer client: power of attorney, bond and fee schedule, as recorded by the broker. */
+export const customsClients = pgTable(
+  "customs_clients",
+  {
+    id: id(),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    /** The importer's Vicora organization, when the importer uses Vicora. */
+    importerOrgId: uuid("importer_org_id").references(() => organizations.id),
+    name: text("name").notNull(),
+    /** Importer of record number exactly as provided (IRS EIN or CBP-assigned number). Displayed masked. */
+    iorNumber: text("ior_number"),
+    status: text("status", { enum: ["ONBOARDING", "ACTIVE", "INACTIVE"] }).notNull().default("ONBOARDING"),
+    poaStatus: text("poa_status", { enum: ["NONE", "RECEIVED", "VERIFIED", "EXPIRED", "REVOKED"] }).notNull().default("NONE"),
+    poaDocumentId: uuid("poa_document_id"),
+    poaSignedAt: ts("poa_signed_at"),
+    poaExpiresAt: ts("poa_expires_at"),
+    poaVerifiedBy: uuid("poa_verified_by").references(() => users.id),
+    poaVerifiedAt: ts("poa_verified_at"),
+    bondType: text("bond_type", { enum: ["NONE", "SINGLE_TRANSACTION", "CONTINUOUS"] }).notNull().default("NONE"),
+    bondNumber: text("bond_number"),
+    suretyName: text("surety_name"),
+    bondAmountMinor: minor("bond_amount_minor"),
+    bondExpiresAt: ts("bond_expires_at"),
+    bondSource: text("bond_source", { enum: ["SELF_REPORTED", "DOCUMENT_REVIEWED"] }).notNull().default("SELF_REPORTED"),
+    currency: text("currency").notNull().default("USD"),
+    entryFeeMinor: minor("entry_fee_minor"),
+    perLineFeeMinor: minor("per_line_fee_minor"),
+    isfFeeMinor: minor("isf_fee_minor"),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("customs_clients_broker_idx").on(t.brokerOrgId), uniqueIndex("customs_clients_importer_uq").on(t.brokerOrgId, t.importerOrgId)],
+);
+
+/**
+ * A client's product library. A classification becomes reusable only after a licensed broker approves it;
+ * AI suggestions are stored separately and never written here without that approval.
+ */
+export const classificationItems = pgTable(
+  "classification_items",
+  {
+    id: id(),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    clientId: uuid("client_id").notNull().references(() => customsClients.id, { onDelete: "cascade" }),
+    partNumber: text("part_number"),
+    description: text("description").notNull(),
+    htsCode: text("hts_code").notNull(),
+    countryOfOrigin: text("country_of_origin"),
+    status: text("status", { enum: ["DRAFT", "APPROVED", "RETIRED"] }).notNull().default("DRAFT"),
+    rationale: text("rationale"),
+    source: text("source", { enum: ["BROKER", "AI_SUGGESTION", "PRECEDENT"] }).notNull().default("BROKER"),
+    approvedBy: uuid("approved_by").references(() => users.id),
+    approvedAt: ts("approved_at"),
+    timesUsed: integer("times_used").notNull().default(0),
+    lastUsedAt: ts("last_used_at"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("classification_client_idx").on(t.clientId), index("classification_part_idx").on(t.brokerOrgId, t.partNumber)],
+);
+
+/** Deadline rules a brokerage configures. Vicora ships defaults labeled for verification; it does not maintain regulations. */
+export const customsDeadlineRules = pgTable(
+  "customs_deadline_rules",
+  {
+    id: id(),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    anchor: text("anchor", { enum: ["VESSEL_DEPARTURE", "ARRIVAL", "RELEASE", "ENTRY_OPENED"] }).notNull(),
+    offsetDays: integer("offset_days").notNull().default(0),
+    offsetHours: integer("offset_hours").notNull().default(0),
+    businessDays: boolean("business_days").notNull().default(false),
+    /** Applies only to these modes of transport (empty = all). */
+    modes: jsonb("modes").$type<string[]>().notNull().default([]),
+    reference: text("reference"),
+    isDefaultTemplate: boolean("is_default_template").notNull().default(false),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("deadline_rules_org_key_uq").on(t.brokerOrgId, t.key)],
+);
+
+export const customsDeadlines = pgTable(
+  "customs_deadlines",
+  {
+    id: id(),
+    entryId: uuid("entry_id").notNull().references(() => customsEntries.id, { onDelete: "cascade" }),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    ruleKey: text("rule_key").notNull(),
+    label: text("label").notNull(),
+    reference: text("reference"),
+    dueAt: ts("due_at").notNull(),
+    status: text("status", { enum: ["OPEN", "MET", "WAIVED"] }).notNull().default("OPEN"),
+    completedBy: uuid("completed_by").references(() => users.id),
+    completedAt: ts("completed_at"),
+    note: text("note"),
+  },
+  (t) => [uniqueIndex("customs_deadlines_entry_rule_uq").on(t.entryId, t.ruleKey), index("customs_deadlines_due_idx").on(t.brokerOrgId, t.dueAt)],
+);
+
+export interface ReviewEvidence {
+  kind: "document" | "line" | "extraction" | "client" | "deadline" | "library" | "entry";
+  label: string;
+  ref?: string;
+  snippet?: string;
+}
+export interface ReviewFinding {
+  id: string;
+  code: string;
+  severity: "BLOCKER" | "WARNING" | "INFO";
+  title: string;
+  detail: string;
+  evidence: ReviewEvidence[];
+  origin: "RULE" | "AI";
+  resolution: { status: "ACKNOWLEDGED" | "RESOLVED"; by: string; at: string; note: string | null } | null;
+}
+
+/** Pre-filing review of an entry: rule checks plus optional AI observations, each with evidence. */
+export const customsReviews = pgTable(
+  "customs_reviews",
+  {
+    id: id(),
+    entryId: uuid("entry_id").notNull().references(() => customsEntries.id, { onDelete: "cascade" }),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    engine: text("engine").notNull(),
+    score: integer("score").notNull(),
+    findings: jsonb("findings").$type<ReviewFinding[]>().notNull().default([]),
+    /** Fingerprint of the lines and documents reviewed; a later change makes the review stale. */
+    inputHash: text("input_hash").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index("customs_reviews_entry_idx").on(t.entryId)],
+);
+
+export interface QaCitation {
+  id: string;
+  label: string;
+  snippet: string;
+}
+
+/** "Ask this file" questions and grounded answers, kept for audit. */
+export const customsQuestions = pgTable(
+  "customs_questions",
+  {
+    id: id(),
+    entryId: uuid("entry_id").notNull().references(() => customsEntries.id, { onDelete: "cascade" }),
+    brokerOrgId: uuid("broker_org_id").notNull().references(() => organizations.id),
+    userId: uuid("user_id").references(() => users.id),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    citations: jsonb("citations").$type<QaCitation[]>().notNull().default([]),
+    engine: text("engine").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("customs_questions_entry_idx").on(t.entryId)],
+);
 
 export const tasks = pgTable(
   "tasks",

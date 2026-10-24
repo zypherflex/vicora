@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeHts } from "@/lib/customs";
 import {
   ACCESSORIALS,
   CHARGE_CODES,
@@ -379,18 +380,102 @@ export const customsStatusSchema = z.object({
   status: z.enum(["INTAKE", "DOCS_PENDING", "IN_REVIEW", "READY_TO_FILE", "RELEASED", "HOLD", "CLOSED"]),
 });
 
+/** 10-digit HTSUS number in any common punctuation; stored as 0000.00.0000. */
+const htsCode = z
+  .string()
+  .trim()
+  .transform((v, c) => {
+    const n = normalizeHts(v);
+    if (!n) c.addIssue({ code: "custom", message: "Enter a 10-digit HTSUS number, e.g. 0000.00.0000" });
+    return n ?? v;
+  });
+
 export const customsLineSchema = z.object({
   description: trimmed(300),
-  htsCode: z
-    .string()
-    .regex(/^\d{4}(\.\d{2}){0,3}$/, "Format as 0000.00.00.00")
-    .optional()
-    .nullable(),
+  partNumber: optText(80),
+  htsCode: htsCode.optional().nullable(),
   quantity: z.number().int().min(0).optional().nullable(),
   valueMinor: minorAmount.optional().nullable(),
   countryOfOrigin: z.string().length(2).toUpperCase().optional().nullable(),
+  dutyRateBp: z.number().int().min(0).max(100_000).optional().nullable(),
   brokerReviewed: z.boolean().default(false),
 });
+
+export const entryDetailsSchema = z.object({
+  entryNumber: z
+    .string()
+    .trim()
+    .regex(/^[A-Z0-9]{3}-?\d{7}-?\d$/i, "Format as XXX-1234567-8")
+    .optional()
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+  entryType: z.string().regex(/^\d{2}$/).optional().nullable(),
+  modeOfTransport: z.enum(["OCEAN", "AIR", "TRUCK", "RAIL"]).optional(),
+  vesselDepartureAt: isoDate.optional().nullable(),
+  arrivalAt: isoDate.optional().nullable(),
+  releasedAt: isoDate.optional().nullable(),
+  clientId: z.string().uuid().optional().nullable(),
+});
+
+const optDate = isoDate.optional().nullable();
+export const customsClientSchema = z.object({
+  name: trimmed(160),
+  importerOrgId: z.string().uuid().optional().nullable(),
+  iorNumber: optText(40),
+  status: z.enum(["ONBOARDING", "ACTIVE", "INACTIVE"]).optional(),
+  bondType: z.enum(["NONE", "SINGLE_TRANSACTION", "CONTINUOUS"]).optional(),
+  bondNumber: optText(40),
+  suretyName: optText(120),
+  bondAmountMinor: minorAmount.optional().nullable(),
+  bondExpiresAt: optDate,
+  bondSource: z.enum(["SELF_REPORTED", "DOCUMENT_REVIEWED"]).optional(),
+  entryFeeMinor: minorAmount.optional().nullable(),
+  perLineFeeMinor: minorAmount.optional().nullable(),
+  isfFeeMinor: minorAmount.optional().nullable(),
+  notes: optText(4000),
+});
+
+export const poaSchema = z.object({
+  status: z.enum(["NONE", "RECEIVED", "VERIFIED", "EXPIRED", "REVOKED"]),
+  documentId: z.string().uuid().optional().nullable(),
+  signedAt: optDate,
+  expiresAt: optDate,
+});
+
+export const classificationSchema = z.object({
+  clientId: z.string().uuid(),
+  partNumber: optText(80),
+  description: trimmed(300),
+  htsCode,
+  countryOfOrigin: z.string().length(2).toUpperCase().optional().nullable(),
+  rationale: optText(2000),
+  source: z.enum(["BROKER", "AI_SUGGESTION", "PRECEDENT"]).default("BROKER"),
+});
+
+export const applyClassificationSchema = z.object({ classificationItemId: z.string().uuid() });
+
+export const deadlineRuleSchema = z.object({
+  label: trimmed(160),
+  anchor: z.enum(["VESSEL_DEPARTURE", "ARRIVAL", "RELEASE", "ENTRY_OPENED"]),
+  offsetDays: z.number().int().min(-60).max(365),
+  offsetHours: z.number().int().min(-72).max(72).default(0),
+  businessDays: z.boolean().default(false),
+  modes: z.array(z.enum(["OCEAN", "AIR", "TRUCK", "RAIL"])).default([]),
+  reference: optText(500),
+  enabled: z.boolean().default(true),
+});
+
+export const deadlineStatusSchema = z.object({ status: z.enum(["OPEN", "MET", "WAIVED"]), note: optText(500) });
+
+export const resolveFindingSchema = z.object({ findingId: z.string().min(1).max(80), status: z.enum(["ACKNOWLEDGED", "RESOLVED"]), note: optText(1000) });
+
+export const linesFromExtractionSchema = z.object({ indexes: z.array(z.number().int().min(0).max(500)).min(1).max(200) });
+
+export const askFileSchema = z.object({ question: trimmed(1000) });
+
+export const classificationDecisionSchema = z.object({ decision: z.enum(["APPROVED", "RETIRED"]) });
+
+export const saveToLibrarySchema = z.object({ rationale: optText(2000) });
 
 export const extractionReviewSchema = z.object({
   decision: z.enum(["APPROVED", "REJECTED"]),
