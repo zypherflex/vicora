@@ -15,6 +15,7 @@ No integration in this repository has been tested against a live third-party pro
 |---|---|---|---|
 | AI (Anthropic Claude) | Connected when `ANTHROPIC_API_KEY` is set; otherwise **Demonstration** rules engine | `adapters/ai.ts` | Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`). Only the demo engine has been exercised by the test suite |
 | Payments | **Sandbox** (default). Stripe: **Not connected** | `adapters/payments.ts` | Implement the Stripe adapter (hosted Checkout / PaymentIntents, so card data never touches Vicora) and its webhook verification; set `PAYMENTS_PROVIDER=stripe` |
+| Tariff data (HTSUS rates, rulings) | **Not connected**. Duty rates are entered by the broker; the duty figure is labeled an estimate | `lib/customs.ts` | Licensed tariff data source plus broker review workflow |
 | Customs filing (CBP ACE / ABI) | **Not connected**; **Demonstration** adapter available | `services/customs.ts` (`FILING_ADAPTERS`) | Requires ABI certification or an ABI software vendor, a filer code and broker credentials |
 | Carrier authority (FMCSA QCMobile) | **Not connected** | `services/compliance.ts` | FMCSA web key plus an adapter that maps the response to compliance records |
 | Insurance certificate monitoring | **Not connected** | `services/compliance.ts` | Contract with a certificate-monitoring provider |
@@ -28,10 +29,26 @@ No integration in this repository has been tested against a live third-party pro
 
 ## AI (Anthropic Claude)
 
-AI is used in two places:
+AI is used in these places:
 
-- **Document field extraction** in the customs workspace.
+- **Document field extraction** in the customs workspace, plus **invoice line-item extraction** from
+  commercial invoices. Every value carries the quote it came from.
+- **Pre-filing review observations.** Added to the deterministic rule checks when a model is configured.
+  Observations can only be warnings or notes (never blockers), and each must quote text that is found in
+  the file, or it is dropped.
+- **Classification candidates.** Up to three unverified 10-digit HTSUS candidates with a rationale and the
+  facts that would decide between them. They are labeled "Unverified", are never written to a line, and
+  can only be saved to a client's library as a DRAFT for a licensed broker to approve. With the
+  demonstration engine there are no candidates; precedent from the client's approved library is shown
+  instead.
+- **Ask this file.** Answers come only from the file's passages (documents, approved extractions, lines,
+  client record, deadlines) and must cite them; citations that don't match the source are removed, and an
+  answer with no verified citation is replaced with a "not supported by the file" message. The
+  demonstration engine does keyword retrieval and says so.
 - **The shipment copilot**, which writes summaries, draft customer updates and suggested next steps.
+
+Classification precedent matching and deadline computation are deterministic code, not AI, and show
+their reasoning (shared words, part-number match, rule reference).
 
 These rules apply whichever engine is running:
 
@@ -70,5 +87,6 @@ The demonstration adapter records a reference in the form `DEMO-…` and a timel
 filing require all of the following:
 
 - the `customs.approve` permission (licensed broker role)
-- the entry in `READY_TO_FILE`, which requires every line to have been reviewed by a broker
+- the entry in `READY_TO_FILE`, which requires every line to have been reviewed by a licensed broker and
+  a pre-filing review that is current (nothing changed since it ran) with no unresolved blockers
 - an explicit confirmation checkbox

@@ -1,8 +1,11 @@
 # Vicora
 
-Vicora is a multi-party U.S. logistics platform. Shippers, customs brokers, freight brokers, carriers,
-auto transport companies and drivers work on one shared shipment record (the "digital twin"). Each
-party sees only what its role and organization are allowed to see.
+Vicora is a U.S. customs brokerage platform built on a multi-party logistics network. Licensed customs
+brokers run their whole desk in Vicora: importer clients with power of attorney and bond tracking, a
+per-client classification library, deadline tracking, and AI that prepares and checks every entry while
+the licensed broker makes every customs decision. Around that core, importers, freight brokers, carriers,
+auto transport companies and drivers work on one shared shipment record (the "digital twin"). Each party
+sees only what its role and organization are allowed to see.
 
 > **Status: working prototype, not production-ready.** All organizations, people and shipments in the
 > seed data are fictional and labeled as demo data. Payments run in a labeled **sandbox** (no money moves),
@@ -20,9 +23,23 @@ party sees only what its role and organization are allowed to see.
 - **Carrier and driver tools.** Fleet (drivers, equipment, trips) and dispatch. A mobile driver view with
   milestones, proof of delivery (photo, PDF or signature), and GPS, manual or demo location.
 - **Auto transport.** VIN-level vehicles, pickup and delivery inspections, tap-to-mark damage and photos.
-- **Customs broker workspace.** Entries, tasks and document requests. AI-assisted field extraction cites
-  its source and needs a human to approve it. Filing requires a licensed broker and an explicit
-  confirmation.
+- **Customs brokerage (the core).**
+  - **Brokerage desk:** KPIs, an entry pipeline from document collection to release, deadlines due and
+    overdue, client compliance alerts and team workload.
+  - **Importer clients:** power of attorney (recorded, then verified by a licensed broker), bond details
+    with their source, fee schedule, masked importer-of-record number.
+  - **Classification library per client:** classifications become reusable only when a licensed broker
+    approves them. New lines are matched to that precedent by part number and description, with the
+    reasons shown.
+  - **Deadline engine:** brokerage-editable rules (ISF, entry, entry summary, internal targets), each with
+    its reference and a "verify against current CBP guidance" label.
+  - **AI that prepares and checks the work:** field and invoice line-item extraction with quoted sources,
+    a pre-filing review (deterministic rule checks plus AI observations that must quote the file),
+    unverified classification candidates, and "ask this file" answers with citations.
+  - **Guardrails:** marking an entry ready to file needs a licensed broker, every line reviewed, and a
+    current review with no open blockers. Filing needs explicit confirmation. CBP ACE is shown as
+    **Not connected**; a labeled demonstration adapter records a simulated reference.
+  - **Brokerage billing:** estimated charges from the client's fee schedule, approved by the importer.
 - **Command center.** KPIs, a map and list, saved views, and an attention list that puts exceptions first.
 - **Finance.** Charges, invoices, credit notes, sandbox payments with signed and idempotent webhooks,
   and carrier payables gated on proof of delivery.

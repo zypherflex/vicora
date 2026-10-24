@@ -18,7 +18,19 @@ import { createTender, dispatchLeg, openException, recordLegMilestone, respondTo
 import { uploadDocument } from "@/server/services/documents";
 import { createTrackingLink } from "@/server/services/tracking";
 import { approvePayable, completeShipment, createInvoice, payInvoice, processPaymentWebhook } from "@/server/services/finance";
-import { appointCustomsBroker, openCustomsEntry, requestExtraction, runExtraction } from "@/server/services/customs";
+import { appointCustomsBroker, openCustomsEntry, requestExtraction, runExtraction, setCustomsStatus, upsertCustomsLine } from "@/server/services/customs";
+import {
+  askFile,
+  createClassification,
+  createClient,
+  createLinesFromExtraction,
+  decideClassification,
+  runPreflightReview,
+  setDeadlineStatus,
+  setPowerOfAttorney,
+  updateClient,
+  updateEntryDetails,
+} from "@/server/services/brokerage";
 import { createTrip, recordInspection } from "@/server/services/fleet";
 import { addComplianceRecord, verifyComplianceRecord } from "@/server/services/compliance";
 import { postMessage } from "@/server/services/comms";
@@ -249,6 +261,9 @@ async function main() {
           "Gross Weight: 11,180 kg",
           "Currency: USD",
           "Description: Stoneware dinnerware sets, 16-piece, assorted glazes",
+          "Line 1 | Part HV-DS16-BLU | Stoneware dinnerware 16pc blue | Qty 1,200 | Unit 18.50 | Amount 22,200.00 | Origin VN",
+          "Line 2 | Part HV-DS16-GRN | Stoneware dinnerware 16pc green | Qty 960 | Unit 18.50 | Amount 17,760.00 | Origin VN",
+          "Line 3 | Part HV-MUG-4 | Stoneware mug set, 4-piece | Qty 1,500 | Unit 6.00 | Amount 9,000.00 | Origin VN",
           "Total Invoice Value: USD 48,960.00",
         ],
       ]),
@@ -270,6 +285,69 @@ async function main() {
     await runExtraction(db, ex.id);
   }
   await db.delete(t.jobs).where(eq(t.jobs.type, "document.extract"));
+
+  /* ------------------------------------------------------------ 2b. Customs brokerage desk (Harborline) */
+  console.log("Customs brokerage: clients, library, deadlines, pre-filing review…");
+  const ILLUSTRATIVE = "[Demo] Illustrative precedent for this demonstration only. Not a classification determination; verify against the current HTSUS.";
+  const [entry2] = await db.select().from(t.customsEntries).where(eq(t.customsEntries.shipmentId, s2.id));
+  const lakeshoreClientId = entry2.clientId!;
+  await as("ruth@harborline.demo", (c) =>
+    updateClient(c, lakeshoreClientId, {
+      status: "ACTIVE",
+      iorNumber: "36-4829103-00",
+      bondType: "CONTINUOUS",
+      bondNumber: "DEMO-CB-118204",
+      suretyName: "Granite Mutual Surety (fictional)",
+      bondAmountMinor: 50_000_00,
+      bondExpiresAt: h(24 * 210),
+      bondSource: "DOCUMENT_REVIEWED",
+      entryFeeMinor: 125_00,
+      perLineFeeMinor: 4_50,
+      isfFeeMinor: 35_00,
+      notes: "Fictional demo client.",
+    }),
+  );
+  const poa = await as("maya@lakeshore.demo", (c) =>
+    uploadDocument(c, {
+      shipmentId: s2.id,
+      filename: "customs-power-of-attorney.pdf",
+      data: textPdf([["FICTIONAL DEMONSTRATION DOCUMENT", "CUSTOMS POWER OF ATTORNEY", "Grantor: Lakeshore Home Goods", "Agent: Harborline Customs Brokerage", "Signed: Maya Okafor, Owner"]]),
+      meta: { category: "POWER_OF_ATTORNEY", title: "Customs power of attorney", visibility: "SHARED", customerVisible: true },
+    }),
+  );
+  await as("ruth@harborline.demo", (c) => setPowerOfAttorney(c, lakeshoreClientId, { status: "VERIFIED", documentId: poa.document.id, signedAt: h(-24 * 300), expiresAt: h(24 * 65) }));
+  for (const item of [
+    { partNumber: "HV-DS16-BLU", description: "Stoneware dinnerware set, 16-piece, cobalt blue glaze", htsCode: "6912.00.4810" },
+    { partNumber: "HV-MUG-4", description: "Stoneware mug set, 4-piece", htsCode: "6912.00.4400" },
+  ]) {
+    const it = await as("ben@harborline.demo", (c) => createClassification(c, { clientId: lakeshoreClientId, ...item, countryOfOrigin: "VN", rationale: ILLUSTRATIVE, source: "BROKER" }));
+    await as("ruth@harborline.demo", (c) => decideClassification(c, it.id, "APPROVED"));
+  }
+  await as("ben@harborline.demo", (c) =>
+    createClassification(c, { clientId: lakeshoreClientId, partNumber: "LS-VOT-12", description: "Glass votive candle holder, clear, set of 12", htsCode: "7013.99.5000", countryOfOrigin: "CN", rationale: `${ILLUSTRATIVE} Draft awaiting licensed-broker approval.`, source: "BROKER" }),
+  );
+  await as("ben@harborline.demo", (c) => updateEntryDetails(c, entry2.id, { entryType: "01", modeOfTransport: "OCEAN", vesselDepartureAt: h(-24 * 16), arrivalAt: h(48) }));
+  const [isf2] = await db.select().from(t.customsDeadlines).where(eq(t.customsDeadlines.entryId, entry2.id)).then((r) => r.filter((d) => d.ruleKey === "ISF"));
+  if (isf2) await as("ben@harborline.demo", (c) => setDeadlineStatus(c, isf2.id, { status: "MET", note: "[Demo] ISF transmitted by the importer's filer (fictional)." }));
+  const [ciEx] = await db.select().from(t.documentExtractions).where(eq(t.documentExtractions.documentId, ci.document.id));
+  await as("ben@harborline.demo", (c) => createLinesFromExtraction(c, entry2.id, ciEx.id, ciEx.lineItems.map((_, i) => i)));
+  await as("ben@harborline.demo", (c) => setCustomsStatus(c, entry2.id, { status: "IN_REVIEW" }));
+  // The licensed broker confirms the two lines that matched approved precedent; line 2 is a new SKU left for review.
+  for (const l of await db.select().from(t.customsLines).where(eq(t.customsLines.entryId, entry2.id))) {
+    if (!l.classificationItemId) continue;
+    await as("ruth@harborline.demo", (c) =>
+      upsertCustomsLine(c, entry2.id, { partNumber: l.partNumber, description: l.description, htsCode: l.htsCode, quantity: l.quantity, valueMinor: l.valueMinor, countryOfOrigin: l.countryOfOrigin, dutyRateBp: null, brokerReviewed: true }, l.id),
+    );
+  }
+  await as("ruth@harborline.demo", (c) => runPreflightReview(c, entry2.id));
+  await as("ruth@harborline.demo", (c) => askFile(c, entry2.id, "What is the invoice total and who is the seller?"));
+
+  // A second importer, still onboarding: no power of attorney or bond yet.
+  await as("ruth@harborline.demo", (c) => createClient(c, { name: "Pacific Crest Motors", importerOrgId: org.pacific.id, iorNumber: null, bondNumber: null, suretyName: null, status: "ONBOARDING", notes: "Fictional demo client. Waiting on signed POA and bond details." }));
+  // A client that does not use Vicora, with a power of attorney about to expire.
+  const sierra = await as("ruth@harborline.demo", (c) => createClient(c, { name: "Sierra Trail Outfitters (fictional)", iorNumber: "84-2290417-00", bondNumber: null, suretyName: null, status: "ACTIVE", bondType: "SINGLE_TRANSACTION", bondSource: "SELF_REPORTED", entryFeeMinor: 150_00, perLineFeeMinor: 5_00, notes: "Fictional demo client." }));
+  await as("ruth@harborline.demo", (c) => setPowerOfAttorney(c, sierra.id, { status: "RECEIVED", signedAt: h(-24 * 350), expiresAt: h(24 * 12) }));
+
   await as("dana@meridian.demo", (c) => submitQuote(c, s2.id, { currency: "USD", lines: [line("DRAYAGE", "Port drayage Long Beach → Ontario", 685), line("CHASSIS", "Chassis (2 days)", 90, 2000), line("FUEL_SURCHARGE", "Fuel surcharge", 96)], estimatedCostMinor: 760_00, transitDays: 1, notes: "Includes pier pass." }));
   await as("ops@desertsun.demo", (c) => submitQuote(c, s2.id, { currency: "USD", lines: [line("DRAYAGE", "Drayage incl. chassis", 845), line("FUEL_SURCHARGE", "Fuel", 110)], transitDays: 1, notes: null }));
 
@@ -392,6 +470,46 @@ async function main() {
     }),
   );
 
+  /* ------------------------------------------------------------ 8–9. More customs work for the brokerage desk */
+  console.log("Shipments 8–9: customs imports for the brokerage desk…");
+  const s8 = await as("kim@pacificcrest.demo", (c) =>
+    createShipment(c, {
+      ...baseShipment,
+      serviceType: "PORT_TO_DOOR",
+      title: "Aftermarket alloy wheels import — Tacoma to Nashville",
+      requiresCustoms: true,
+      commodity: "Aluminum alloy road wheels",
+      equipmentType: "CONTAINER_CHASSIS_40",
+      accessorials: ["DRAYAGE"],
+      stops: [stop("PORT", "Husky Terminal (fictional berth)", "Tacoma", "WA", h(30), h(54)), stop("DELIVERY", "Pacific Crest Motors Nashville", "Nashville", "TN", h(150), h(170))],
+      items: [item("Alloy wheels, palletized", 22, 19800)],
+      international: { portOfEntry: "Tacoma, WA", vesselVoyage: "ONE HARMONY / 118E", containerNumber: "TGHU7712048", billOfLadingNumber: "ONEYTAC5512870", countryOfOrigin: "TW", portEta: h(30) },
+      submit: true,
+    }),
+  );
+  await as("kim@pacificcrest.demo", (c) => appointCustomsBroker(c, s8.id, org.harborline.id));
+  const ben = (await db.select().from(t.users).where(eq(t.users.email, "ben@harborline.demo")))[0];
+  const entry8 = await as("ruth@harborline.demo", (c) => openCustomsEntry(c, s8.id, { portOfEntry: "Tacoma, WA", arrivalAt: h(30), importerName: "Pacific Crest Motors", assignedToUserId: ben.id, brokerNotes: "Waiting on POA and bond before we can file." }));
+  await as("ben@harborline.demo", (c) => updateEntryDetails(c, entry8.id, { entryType: "01", modeOfTransport: "OCEAN", vesselDepartureAt: h(-24 * 11), arrivalAt: h(30) }));
+  await as("ben@harborline.demo", (c) => runPreflightReview(c, entry8.id));
+
+  const s9 = await as("leo@lakeshore.demo", (c) =>
+    createShipment(c, {
+      ...baseShipment,
+      serviceType: "PORT_TO_DOOR",
+      title: "Glass votive holders import — Savannah to Atlanta",
+      requiresCustoms: true,
+      commodity: "Glass candle holders",
+      equipmentType: "CONTAINER_CHASSIS_40",
+      accessorials: ["DRAYAGE"],
+      stops: [stop("PORT", "Garden City Terminal", "Savannah", "GA", h(24 * 9), h(24 * 10)), stop("DELIVERY", "Lakeshore Atlanta DC", "Atlanta", "GA", h(24 * 10 + 6), h(24 * 11))],
+      items: [item("Glass votive holders, cartons on pallets", 14, 15400)],
+      international: { portOfEntry: "Savannah, GA", vesselVoyage: "CMA CGM TAGE / 0FX7W", containerNumber: "CMAU5520913", billOfLadingNumber: "CMDUSHA2290441", countryOfOrigin: "CN", portEta: h(24 * 9) },
+      submit: true,
+    }),
+  );
+  await as("maya@lakeshore.demo", (c) => appointCustomsBroker(c, s9.id, org.harborline.id));
+
   console.log("Running queued notification jobs…");
   await db.delete(t.jobs).where(eq(t.jobs.type, "sandbox.deliver_webhook"));
   while ((await runDueJobs(200)) > 0) {
@@ -400,6 +518,7 @@ async function main() {
   console.log(`\nSeed complete. ${USERS.length} demo users, password: ${DEMO_PASSWORD}`);
   for (const u of USERS) console.log(`  ${u.email.padEnd(26)} ${u.orgs.map(([k, r]) => `${org[k].name} (${r.join(", ")})`).join("; ") || "Platform administrator"}`);
   void s6;
+  void s9;
 }
 
 main()
