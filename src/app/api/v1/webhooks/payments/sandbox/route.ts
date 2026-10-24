@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
     log.warn("webhook_rejected", { reason: v.reason });
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
-  const parsed = eventSchema.safeParse(JSON.parse(raw));
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return NextResponse.json({ error: "invalid payload" }, { status: 400 });
+  }
+  const parsed = eventSchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
   const result = await processPaymentWebhook(systemDb(), "sandbox", parsed.data);
   return NextResponse.json({ received: true, ...result });
