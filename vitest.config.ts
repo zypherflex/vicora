@@ -16,6 +16,8 @@ function loadEnv(file: string): Record<string, string> {
 export default defineConfig({
   resolve: { alias },
   test: {
+    // Integration tests share one seeded database; run files one at a time (unit tests are fast either way).
+    fileParallelism: false,
     projects: [
       { resolve: { alias }, test: { name: "unit", include: ["tests/unit/**/*.test.ts"], environment: "node", env: loadEnv(".env.test") } },
       {
@@ -26,8 +28,6 @@ export default defineConfig({
           environment: "node",
           env: loadEnv(".env.test"),
           globalSetup: ["tests/integration/global-setup.ts"],
-          // Tests share one seeded database; run files one at a time.
-          fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 120_000,
         },

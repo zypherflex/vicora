@@ -8,6 +8,8 @@ const securityHeaders = [
 ];
 
 const config: NextConfig = {
+  // Lets the end-to-end suite run its own server beside a development server without sharing build output.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   serverExternalPackages: ["postgres"],
   experimental: { serverActions: { bodySizeLimit: "2mb" } },
