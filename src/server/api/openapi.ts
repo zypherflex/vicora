@@ -1,0 +1,141 @@
+import { z, type ZodType } from "zod";
+import * as v from "@/server/validators";
+
+type Ep = { method: "get" | "post" | "patch" | "put" | "delete"; path: string; summary: string; tag: string; auth?: "session" | "public" | "signature"; permission?: string; body?: ZodType; multipart?: boolean };
+
+/** Registry used to generate the OpenAPI document served at /api/v1/openapi.json. */
+export const ENDPOINTS: Ep[] = [
+  { method: "post", path: "/auth/register", summary: "Register a user and organization (rate limited)", tag: "Auth", auth: "public", body: v.registerSchema },
+  { method: "post", path: "/auth/login", summary: "Sign in (rate limited per IP and per account)", tag: "Auth", auth: "public", body: v.loginSchema },
+  { method: "post", path: "/auth/logout", summary: "Sign out", tag: "Auth" },
+  { method: "get", path: "/auth/session", summary: "Current user, memberships and permissions", tag: "Auth" },
+  { method: "post", path: "/auth/switch-org", summary: "Switch the active organization", tag: "Auth", body: v.switchOrgSchema },
+  { method: "get", path: "/invitations/{token}", summary: "Look up an invitation", tag: "Team", auth: "public" },
+  { method: "post", path: "/invitations/{token}", summary: "Accept an invitation", tag: "Team", auth: "public", body: v.acceptInviteSchema.omit({ token: true }) },
+  { method: "get", path: "/team", summary: "Members and pending invitations", tag: "Team", permission: "team.read" },
+  { method: "post", path: "/team/invitations", summary: "Invite a member", tag: "Team", permission: "team.manage", body: v.inviteSchema },
+  { method: "delete", path: "/team/invitations/{id}", summary: "Revoke an invitation", tag: "Team", permission: "team.manage" },
+  { method: "patch", path: "/team/members/{id}", summary: "Change roles, permission grants/revocations or status", tag: "Team", permission: "team.manage", body: v.updateMemberSchema },
+  { method: "get", path: "/org", summary: "Organization profile", tag: "Organization" },
+  { method: "patch", path: "/org", summary: "Update settings (retention, service area)", tag: "Organization", permission: "org.manage", body: v.orgSettingsSchema },
+  { method: "get", path: "/shipments", summary: "Search shipments where your org is a party", tag: "Shipments", permission: "shipment.read" },
+  { method: "post", path: "/shipments", summary: "Create a shipment request (freight, vehicles, customs)", tag: "Shipments", permission: "shipment.create", body: v.createShipmentSchema },
+  { method: "get", path: "/shipments/{id}", summary: "Shipment digital twin (role-redacted)", tag: "Shipments", permission: "shipment.read" },
+  { method: "post", path: "/shipments/{id}/request-quotes", summary: "Publish for quotes", tag: "Quotes", permission: "quote.request" },
+  { method: "post", path: "/shipments/{id}/status", summary: "Validated status transition", tag: "Shipments", permission: "shipment.update", body: v.transitionSchema },
+  { method: "post", path: "/shipments/{id}/complete", summary: "Close a delivered shipment (provider)", tag: "Shipments" },
+  { method: "get", path: "/loadboard", summary: "Open quote requests for providers", tag: "Quotes", permission: "loadboard.read" },
+  { method: "post", path: "/shipments/{id}/quotes", summary: "Submit a quote", tag: "Quotes", permission: "quote.submit", body: v.submitQuoteSchema },
+  { method: "post", path: "/quotes/{id}/accept", summary: "Accept a quote (idempotent, concurrency-safe)", tag: "Quotes", permission: "quote.accept" },
+  { method: "post", path: "/quotes/{id}/withdraw", summary: "Withdraw a quote", tag: "Quotes", permission: "quote.submit" },
+  { method: "get", path: "/shipments/{id}/matches", summary: "Ranked providers with criteria (?purpose=tender|invite)", tag: "Providers" },
+  { method: "post", path: "/shipments/{id}/tenders", summary: "Tender a leg to a carrier", tag: "Dispatch", permission: "tender.create", body: v.tenderSchema },
+  { method: "get", path: "/tenders", summary: "Incoming and outgoing tenders", tag: "Dispatch" },
+  { method: "post", path: "/tenders/{id}/respond", summary: "Accept or decline a tender", tag: "Dispatch", permission: "tender.respond", body: v.tenderResponseSchema },
+  { method: "post", path: "/shipments/{id}/dispatch", summary: "Assign driver and equipment to a leg", tag: "Dispatch", permission: "dispatch.manage", body: v.dispatchSchema },
+  { method: "post", path: "/shipments/{id}/legs/{legId}/milestones", summary: "Record a leg milestone (POD required for delivery)", tag: "Tracking", permission: "milestone.record", body: v.legMilestoneSchema },
+  { method: "post", path: "/shipments/{id}/location", summary: "Report a location (LIVE_GPS or MANUAL)", tag: "Tracking", permission: "location.report", body: v.locationSchema },
+  { method: "post", path: "/shipments/{id}/exceptions", summary: "Open an exception", tag: "Exceptions", permission: "exception.manage", body: v.exceptionSchema },
+  { method: "patch", path: "/exceptions/{id}", summary: "Acknowledge or resolve an exception", tag: "Exceptions", permission: "exception.manage", body: v.resolveExceptionSchema },
+  { method: "get", path: "/attention", summary: "Exception-first worklist with evidence", tag: "Exceptions" },
+  { method: "post", path: "/shipments/{id}/documents", summary: "Upload a document or new version (multipart)", tag: "Documents", permission: "document.upload", multipart: true },
+  { method: "get", path: "/shipments/{id}/documents", summary: "List shipment documents", tag: "Documents", permission: "document.read" },
+  { method: "post", path: "/org/documents", summary: "Upload an organization document (insurance, authority)", tag: "Documents", permission: "document.upload", multipart: true },
+  { method: "get", path: "/documents/{id}", summary: "Document with version history and extractions", tag: "Documents", permission: "document.read" },
+  { method: "post", path: "/documents/{id}/review", summary: "Approve or reject a document", tag: "Documents", permission: "document.review" },
+  { method: "get", path: "/document-versions/{id}/link", summary: "Issue a 5-minute signed download link bound to the user", tag: "Documents", permission: "document.read" },
+  { method: "get", path: "/files/{versionId}", summary: "Download via signed link (requires session too)", tag: "Documents" },
+  { method: "post", path: "/shipments/{id}/document-requests", summary: "Request a document from the customer", tag: "Documents", permission: "document.review", body: v.documentRequirementSchema },
+  { method: "post", path: "/shipments/{id}/messages", summary: "Post a shared message or internal note", tag: "Communications", permission: "message.write", body: v.messageSchema },
+  { method: "post", path: "/shipments/{id}/tracking-links", summary: "Create a customer tracking link (token shown once)", tag: "Tracking", permission: "tracking_link.manage", body: v.trackingLinkSchema },
+  { method: "delete", path: "/tracking-links/{id}", summary: "Revoke a tracking link", tag: "Tracking", permission: "tracking_link.manage" },
+  { method: "get", path: "/public/tracking/{token}", summary: "Public, restricted tracking view (rate limited)", tag: "Tracking", auth: "public" },
+  { method: "post", path: "/shipments/{id}/charges", summary: "Add an estimated charge (needs bill-to approval)", tag: "Finance", permission: "finance.manage", body: v.chargeSchema },
+  { method: "post", path: "/charges/{id}/decision", summary: "Approve or reject an estimated charge", tag: "Finance", permission: "finance.manage" },
+  { method: "get", path: "/invoices", summary: "Invoices issued and received", tag: "Finance", permission: "finance.read" },
+  { method: "post", path: "/invoices", summary: "Invoice confirmed charges for a delivered shipment", tag: "Finance", permission: "invoice.create", body: v.createInvoiceSchema },
+  { method: "get", path: "/invoices/{id}", summary: "Invoice detail", tag: "Finance", permission: "finance.read" },
+  { method: "post", path: "/invoices/{id}/credits", summary: "Apply a credit note", tag: "Finance", permission: "finance.manage", body: v.creditNoteSchema },
+  { method: "post", path: "/invoices/{id}/pay", summary: "Pay via provider adapter (sandbox; idempotency key required)", tag: "Finance", permission: "payment.make", body: v.payInvoiceSchema },
+  { method: "get", path: "/payables", summary: "Carrier payables", tag: "Finance", permission: "finance.read" },
+  { method: "post", path: "/payables/{id}/approve", summary: "Approve a payable (POD required)", tag: "Finance", permission: "finance.manage" },
+  { method: "post", path: "/payables/{id}/paid", summary: "Record an off-platform payment reference", tag: "Finance", permission: "finance.manage" },
+  { method: "get", path: "/reports/finance", summary: "AR/AP, aging, monthly revenue/cost/margin per currency", tag: "Finance", permission: "finance.read" },
+  { method: "post", path: "/webhooks/payments/sandbox", summary: "Signed payment webhook (x-vicora-signature: t=…,v1=…)", tag: "Finance", auth: "signature" },
+  { method: "post", path: "/shipments/{id}/customs-broker", summary: "Appoint a customs broker", tag: "Customs", permission: "shipment.update" },
+  { method: "get", path: "/customs", summary: "Broker workspace: intake, files, tasks", tag: "Customs", permission: "customs.read" },
+  { method: "post", path: "/shipments/{id}/customs", summary: "Open a customs file", tag: "Customs", permission: "customs.manage", body: v.customsEntrySchema },
+  { method: "get", path: "/customs/{id}", summary: "Customs file with documents, extractions, discrepancies", tag: "Customs", permission: "customs.read" },
+  { method: "patch", path: "/customs/{id}", summary: "Update a customs file", tag: "Customs", permission: "customs.manage", body: v.customsEntrySchema },
+  { method: "post", path: "/customs/{id}/status", summary: "Change customs status (some require licensed broker)", tag: "Customs", permission: "customs.manage", body: v.customsStatusSchema },
+  { method: "post", path: "/customs/{id}/lines", summary: "Add a broker-entered line", tag: "Customs", permission: "customs.manage", body: v.customsLineSchema },
+  { method: "patch", path: "/customs/{id}/lines/{lineId}", summary: "Update / mark reviewed (customs.approve)", tag: "Customs", permission: "customs.manage", body: v.customsLineSchema },
+  { method: "post", path: "/customs/{id}/filing", summary: "Submit via a filing adapter (ACE not connected; demo adapter available)", tag: "Customs", permission: "customs.approve" },
+  { method: "post", path: "/documents/{id}/extractions", summary: "Queue AI-assisted extraction", tag: "Customs", permission: "customs.manage" },
+  { method: "post", path: "/extractions/{id}/review", summary: "Human approval of extracted fields", tag: "Customs", permission: "customs.manage", body: v.extractionReviewSchema },
+  { method: "post", path: "/tasks", summary: "Create a task", tag: "Tasks", body: v.taskSchema },
+  { method: "post", path: "/tasks/{id}/complete", summary: "Complete a task", tag: "Tasks" },
+  { method: "get", path: "/fleet", summary: "Drivers, equipment, trips", tag: "Fleet", permission: "fleet.read" },
+  { method: "post", path: "/fleet/drivers", summary: "Add a driver", tag: "Fleet", permission: "fleet.manage", body: v.driverSchema },
+  { method: "post", path: "/fleet/equipment", summary: "Add equipment", tag: "Fleet", permission: "fleet.manage", body: v.equipmentSchema },
+  { method: "patch", path: "/fleet/equipment/{id}", summary: "Set equipment availability", tag: "Fleet", permission: "fleet.manage" },
+  { method: "post", path: "/fleet/trips", summary: "Plan an auto-transport trip (capacity-checked)", tag: "Fleet", permission: "dispatch.manage", body: v.tripSchema },
+  { method: "post", path: "/fleet/trips/{id}/vehicles", summary: "Load vehicles onto a trip", tag: "Fleet", permission: "dispatch.manage" },
+  { method: "get", path: "/fleet/unassigned-vehicles", summary: "Vehicles awaiting a trip", tag: "Fleet", permission: "fleet.read" },
+  { method: "post", path: "/shipments/{id}/inspections", summary: "Electronic condition report with damage annotations", tag: "Fleet", permission: "inspection.perform", body: v.inspectionSchema },
+  { method: "get", path: "/driver/trips", summary: "Trips assigned to the signed-in driver", tag: "Fleet" },
+  { method: "get", path: "/compliance", summary: "Your compliance records", tag: "Compliance", permission: "compliance.read" },
+  { method: "post", path: "/compliance", summary: "Add a compliance record", tag: "Compliance", permission: "compliance.manage", body: v.complianceRecordSchema },
+  { method: "post", path: "/compliance/{id}/verify", summary: "Record a verification decision", tag: "Compliance", permission: "compliance.verify", body: v.verifyComplianceSchema },
+  { method: "get", path: "/providers", summary: "Provider directory with verification status", tag: "Compliance", permission: "compliance.read" },
+  { method: "get", path: "/notifications", summary: "Your notifications", tag: "Communications" },
+  { method: "post", path: "/notifications/read", summary: "Mark notifications read", tag: "Communications" },
+  { method: "get", path: "/notifications/preferences", summary: "Notification preferences", tag: "Communications" },
+  { method: "put", path: "/notifications/preferences", summary: "Update preferences", tag: "Communications", body: v.notificationPrefSchema },
+  { method: "get", path: "/views", summary: "Saved views", tag: "Shipments" },
+  { method: "post", path: "/views", summary: "Save a view", tag: "Shipments", body: v.savedViewSchema },
+  { method: "delete", path: "/views/{id}", summary: "Delete a saved view", tag: "Shipments" },
+  { method: "post", path: "/shipments/{id}/copilot", summary: "AI copilot: summarize, draft update, next steps (advisory)", tag: "AI", permission: "ai.use", body: v.copilotSchema },
+  { method: "get", path: "/audit", summary: "Organization audit trail", tag: "Audit", permission: "audit.read" },
+  { method: "get", path: "/admin/overview", summary: "Platform administration overview", tag: "Platform" },
+  { method: "patch", path: "/admin/orgs/{id}", summary: "Suspend or activate an organization", tag: "Platform" },
+];
+
+export function openApiDocument() {
+  const paths: Record<string, Record<string, unknown>> = {};
+  for (const e of ENDPOINTS) {
+    const op: Record<string, unknown> = {
+      summary: e.summary,
+      tags: [e.tag],
+      security: e.auth === "public" || e.auth === "signature" ? [] : [{ session: [] }],
+      ...(e.permission ? { "x-permission": e.permission } : {}),
+      parameters: [...e.path.matchAll(/\{(\w+)\}/g)].map((m) => ({ name: m[1], in: "path", required: true, schema: { type: "string" } })),
+      responses: {
+        "200": { description: "Success" },
+        "4XX": { description: "Error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+      },
+    };
+    if (e.body) op.requestBody = { required: true, content: { "application/json": { schema: z.toJSONSchema(e.body, { io: "input", unrepresentable: "any" }) } } };
+    if (e.multipart)
+      op.requestBody = {
+        required: true,
+        content: { "multipart/form-data": { schema: { type: "object", required: ["file", "category"], properties: { file: { type: "string", format: "binary" }, category: { type: "string" }, title: { type: "string" }, visibility: { enum: ["SHARED", "INTERNAL"] }, customerVisible: { type: "boolean" }, documentId: { type: "string", description: "Existing document id to add a new version" } } } } },
+      };
+    (paths[e.path] ??= {})[e.method] = op;
+  }
+  return {
+    openapi: "3.1.0",
+    info: { title: "Vicora API", version: "1.0.0", description: "All endpoints are under /api/v1. Errors use a consistent envelope and every response carries x-request-id." },
+    servers: [{ url: "/api/v1" }],
+    components: {
+      securitySchemes: { session: { type: "apiKey", in: "cookie", name: "vicora_session" } },
+      schemas: {
+        Error: {
+          type: "object",
+          properties: { error: { type: "object", properties: { code: { type: "string" }, message: { type: "string" }, details: {}, requestId: { type: "string" } } } },
+        },
+      },
+    },
+    paths,
+  };
+}

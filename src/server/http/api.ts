@@ -165,3 +165,19 @@ export async function pageMeta(): Promise<RequestMeta> {
   const h = await headers();
   return { requestId: h.get("x-request-id") ?? randomUUID(), ip: clientIp(h) };
 }
+
+export function withSessionCookie(res: NextResponse, token: string, expiresAt: Date) {
+  res.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: env().NODE_ENV === "production" || env().APP_URL.startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    expires: expiresAt,
+  });
+  return res;
+}
+
+export function clearSessionCookie(res: NextResponse) {
+  res.cookies.set(SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
+  return res;
+}
