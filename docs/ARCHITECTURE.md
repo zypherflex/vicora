@@ -143,30 +143,6 @@ See [INTEGRATIONS.md](INTEGRATIONS.md#ai-anthropic-claude). Summary of the rules
 - **Not a customs determination.** AI output is labeled as a draft for review, never as a binding
   customs determination.
 
-## Customs brokerage core
-
-The brokerage layer lives in `src/server/services/brokerage.ts`, with pure helpers (HTS formatting,
-deadline arithmetic, precedent matching, readiness score) in `src/lib/customs.ts`. Its tables are
-`customs_clients`, `classification_items`, `customs_deadline_rules`, `customs_deadlines`,
-`customs_reviews` and `customs_questions` (migration `0002_customs_core`). Row-level security
-(`0003_customs_rls`) restricts all of them to the broker organization. The importer can see the
-deadlines of entries on its own shipments, and nothing else.
-
-- **Pre-filing review.** `runPreflightReview` runs deterministic checks (documents, extractions,
-  discrepancies, every line, value reconciliation against the commercial invoice, client POA and bond,
-  deadlines, consistency with the client's approved library). Each finding carries the evidence that
-  triggered it. When the caller has `ai.use` and a model is configured, AI observations are added; they are
-  only WARNING or INFO and are kept only if their quoted evidence is found in the file. The review stores a
-  hash of its inputs, so any later change to lines, documents, extractions or the client record makes it
-  stale.
-- **Ready-to-file gate.** `setCustomsStatus(READY_TO_FILE)` requires `customs.approve`, every line reviewed,
-  and a current review with no unresolved blockers. Only a licensed broker can resolve a blocker, and only
-  with a written reason.
-- **Classification library.** Items start as DRAFT (staff or AI suggestion) and become reusable only when a
-  licensed broker approves them. Applying one to a line resets that line to unreviewed.
-- **Deadlines.** Rules are per brokerage. Deadlines are recomputed whenever an entry's dates or the rules
-  change; met or waived deadlines are kept as they were.
-
 ## Auth and web security
 
 - **Passwords.** Passwords are hashed with scrypt.

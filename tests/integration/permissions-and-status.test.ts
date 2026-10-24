@@ -80,8 +80,7 @@ describe("role permissions", () => {
   });
 
   it("reserves customs decisions for licensed brokers and never fakes a CBP filing", async () => {
-    const [entry] = await db().select().from(t.customsEntries).where(eq(t.customsEntries.shipmentId, (await shipmentByRef("VCR-26-001002")).id));
-    await db().update(t.customsEntries).set({ status: "DOCS_PENDING" }).where(eq(t.customsEntries.id, entry.id));
+    const [entry] = await db().select().from(t.customsEntries);
     // Customs staff can move the file into review but not mark it ready or file it.
     await as("ben@harborline.demo", (c) => setCustomsStatus(c, entry.id, { status: "IN_REVIEW" }));
     expect(await codeOf(as("ben@harborline.demo", (c) => setCustomsStatus(c, entry.id, { status: "READY_TO_FILE" })))).toBe("FORBIDDEN");

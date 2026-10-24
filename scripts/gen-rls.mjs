@@ -230,25 +230,4 @@ s(`GRANT USAGE, SELECT ON SEQUENCE shipment_ref_seq TO vicora_app;`);
 s(`GRANT EXECUTE ON FUNCTION app_org(), app_user(), app_org_type(), app_is_party(uuid), app_is_customer(uuid), app_can_preview(uuid), app_equipment_availability() TO vicora_app;`);
 
 writeFileSync(new URL("../drizzle/0001_rls.sql", import.meta.url), out.join("\n--> statement-breakpoint\n") + "\n");
-console.log(`0001: wrote ${out.length} statements for ${tenant.length} tables`);
-
-/* ---------------------------------------------------------------- 0003: customs brokerage core */
-// Applied migrations are immutable, so tables added later get their policies in a later file.
-out.length = 0;
-tenant.length = 0;
-const broker = "broker_org_id = app_org()";
-table("customs_clients", ALL(broker));
-table("classification_items", ALL(broker));
-table("customs_deadline_rules", ALL(broker));
-// The importer can see deadlines on its own entries (customs_entries RLS decides which entries are visible).
-table("customs_deadlines", [
-  ["SELECT", broker + " OR EXISTS (SELECT 1 FROM customs_entries e WHERE e.id = entry_id)"],
-  ["INSERT", null, broker],
-  ["UPDATE", broker, broker],
-  ["DELETE", broker],
-]);
-table("customs_reviews", ALL(broker));
-table("customs_questions", ALL(broker));
-s(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${tenant.map((t) => `"${t}"`).join(", ")} TO vicora_app;`);
-writeFileSync(new URL("../drizzle/0003_customs_rls.sql", import.meta.url), out.join("\n--> statement-breakpoint\n") + "\n");
-console.log(`0003: wrote ${out.length} statements for ${tenant.length} tables`);
+console.log(`wrote ${out.length} statements for ${tenant.length} tables`);

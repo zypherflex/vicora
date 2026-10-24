@@ -70,26 +70,11 @@ export function ExtractionReview({ extractionId, fields, warnings, canApprove }:
   );
 }
 
-export interface LineFormLine {
-  id: string;
-  partNumber: string | null;
-  description: string;
-  htsCode: string | null;
-  quantity: number | null;
-  valueMinor: number | null;
-  countryOfOrigin: string | null;
-  dutyRateBp: number | null;
-  brokerReviewed: boolean;
-}
-
-/** Duty rate is entered as a percentage by the broker and stored in basis points. */
-const pctToBp = (v: string) => (v ? Math.round(Number(v) * 100) : null);
-
-export function LineForm({ entryId, canApprove, line }: { entryId: string; canApprove: boolean; line?: LineFormLine }) {
+export function LineForm({ entryId, canApprove, line }: { entryId: string; canApprove: boolean; line?: { id: string; description: string; htsCode: string | null; quantity: number | null; valueMinor: number | null; countryOfOrigin: string | null; brokerReviewed: boolean } }) {
   const { pending, error, ok, run } = useSubmit();
   return (
     <form
-      className="grid gap-2 sm:grid-cols-4"
+      className="grid gap-2 md:grid-cols-7"
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
@@ -98,32 +83,19 @@ export function LineForm({ entryId, canApprove, line }: { entryId: string; canAp
           () =>
             api(line ? `/customs/${entryId}/lines/${line.id}` : `/customs/${entryId}/lines`, {
               method: line ? "PATCH" : "POST",
-              body: {
-                partNumber: v("part") || null,
-                description: v("description"),
-                htsCode: v("hts") || null,
-                quantity: v("qty") ? Number(v("qty")) : null,
-                valueMinor: v("value") ? parseToMinor(v("value")) : null,
-                countryOfOrigin: v("coo") || null,
-                dutyRateBp: pctToBp(v("rate")),
-                brokerReviewed: f.get("reviewed") === "on",
-              },
+              body: { description: v("description"), htsCode: v("hts") || null, quantity: v("qty") ? Number(v("qty")) : null, valueMinor: v("value") ? parseToMinor(v("value")) : null, countryOfOrigin: v("coo") || null, brokerReviewed: f.get("reviewed") === "on" },
             }),
           line ? "Saved." : "Line added.",
           () => !line && (e.target as HTMLFormElement).reset(),
         );
       }}
     >
-      <input name="part" defaultValue={line?.partNumber ?? ""} className="field font-mono" placeholder="Part no." aria-label="Part number" />
-      <input name="description" required defaultValue={line?.description} className="field sm:col-span-3" placeholder="Description" aria-label="Description" />
-      <input name="hts" defaultValue={line?.htsCode ?? ""} className="field font-mono" placeholder="HTS 0000.00.0000" aria-label="HTS code" />
+      <input name="description" required defaultValue={line?.description} className="field md:col-span-2" placeholder="Description" aria-label="Description" />
+      <input name="hts" defaultValue={line?.htsCode ?? ""} className="field font-mono" placeholder="HTS 0000.00.00.00" aria-label="HTS code" />
       <input name="qty" defaultValue={line?.quantity ?? ""} className="field" inputMode="numeric" placeholder="Qty" aria-label="Quantity" />
       <input name="value" defaultValue={line?.valueMinor != null ? (line.valueMinor / 100).toFixed(2) : ""} className="field" inputMode="decimal" placeholder="Value USD" aria-label="Value" />
-      <div className="flex gap-2">
-        <input name="coo" defaultValue={line?.countryOfOrigin ?? ""} maxLength={2} className="field w-full min-w-0 uppercase" placeholder="COO" aria-label="Country of origin" />
-        <input name="rate" defaultValue={line?.dutyRateBp != null ? (line.dutyRateBp / 100).toString() : ""} className="field w-full min-w-0" inputMode="decimal" placeholder="Duty %" aria-label="Duty rate percent" title="Rate the broker confirmed in the current HTSUS" />
-      </div>
-      <div className="flex items-center gap-2 sm:col-span-4">
+      <input name="coo" defaultValue={line?.countryOfOrigin ?? ""} maxLength={2} className="field uppercase" placeholder="COO" aria-label="Country of origin" />
+      <div className="flex items-center gap-2">
         {canApprove && (
           <label className="flex items-center gap-1 text-xs" title="Licensed broker has reviewed classification and value">
             <input type="checkbox" name="reviewed" defaultChecked={line?.brokerReviewed} /> Reviewed
@@ -133,7 +105,7 @@ export function LineForm({ entryId, canApprove, line }: { entryId: string; canAp
           {line ? "Save" : "Add"}
         </Submit>
       </div>
-      <div className="sm:col-span-4">
+      <div className="md:col-span-7">
         <FormStatus error={error} ok={ok} />
       </div>
     </form>
