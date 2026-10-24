@@ -3,5 +3,5 @@ import { currentAuth } from "@/server/http/api";
 
 export default async function Home() {
   const auth = await currentAuth();
-  redirect(!auth ? "/login" : auth.active ? (auth.active.roles.every((r) => r === "DRIVER") ? "/driver" : auth.active.orgType === "CUSTOMS_BROKER" ? "/customs" : "/command") : auth.user.isPlatformAdmin ? "/admin" : "/login?reason=no-org");
+  redirect(!auth ? "/login" : auth.active ? (auth.active.roles.every((r) => r === "DRIVER") ? "/driver" : "/command") : auth.user.isPlatformAdmin ? "/admin" : "/login?reason=no-org");
 }

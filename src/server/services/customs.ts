@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { extractText } from "unpdf";
 import type { z } from "zod";
 import { categoryLabel } from "@/lib/domain";
 import { parseToMinor } from "@/lib/money";
-import { extractFields, extractLineItems, FIELD_DEFS } from "@/server/adapters/ai";
+import { extractFields, FIELD_DEFS } from "@/server/adapters/ai";
 import { storage } from "@/server/adapters/storage";
 import { requirePerm, type Ctx } from "@/server/authz/context";
 import type { DB } from "@/server/db/client";
@@ -24,7 +24,6 @@ import {
 } from "@/server/db/schema";
 import { AppError, conflict, notFound } from "@/server/http/errors";
 import type { customsEntrySchema, customsLineSchema, customsStatusSchema, extractionReviewSchema, taskSchema } from "@/server/validators";
-import { assertReviewClear, ensureClientForImporter, entryInsights, recomputeDeadlines } from "./brokerage";
 import { audit, enqueue, recordEvent, requireParty } from "./common";
 import { openException } from "./operations";
 
@@ -113,7 +112,6 @@ export async function openCustomsEntry(ctx: Ctx, shipmentId: string, input: z.in
   const [existing] = await ctx.db.select().from(customsEntries).where(and(eq(customsEntries.shipmentId, shipmentId), eq(customsEntries.brokerOrgId, ctx.org.id)));
   if (existing) throw conflict("A customs file already exists for this shipment");
   const [importer] = await ctx.db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, access.shipment.ownerOrgId));
-  const client = await ensureClientForImporter(ctx, access.shipment.ownerOrgId, importer?.name ?? "Importer");
   const [entry] = await ctx.db
     .insert(customsEntries)
     .values({
@@ -126,12 +124,8 @@ export async function openCustomsEntry(ctx: Ctx, shipmentId: string, input: z.in
       countryOfOrigin: access.shipment.countryOfOrigin,
       assignedToUserId: input.assignedToUserId ?? ctx.user.id,
       brokerNotes: input.brokerNotes,
-      clientId: client.id,
-      // Port-to-door files arrive by sea; the broker corrects the mode in entry details when it differs.
-      modeOfTransport: access.shipment.portOfEntry ? "OCEAN" : "TRUCK",
     })
     .returning();
-  await recomputeDeadlines(ctx, entry);
   // Standard document checklist; the broker can add or waive items.
   const have = await ctx.db.select({ category: documents.category }).from(documents).where(and(eq(documents.shipmentId, shipmentId), isNull(documents.deletedAt)));
   for (const cat of DEFAULT_REQUIRED_DOCS) {
@@ -189,7 +183,6 @@ export async function getCustomsFile(ctx: Ctx, entryId: string) {
     discrepancies: isBroker ? findDiscrepancies(ex, docs.map((d) => d.doc), shipment) : [],
     tasks: entryTasks,
     filingAdapters: FILING_ADAPTERS,
-    insights: await entryInsights(ctx, entry),
   };
 }
 
@@ -225,7 +218,6 @@ export async function setCustomsStatus(ctx: Ctx, entryId: string, input: z.infer
   if (input.status === "READY_TO_FILE") {
     const lines = await ctx.db.select().from(customsLines).where(eq(customsLines.entryId, e.id));
     if (!lines.length || lines.some((l) => !l.brokerReviewed)) throw conflict("Every entry line must be reviewed by a licensed broker first");
-    await assertReviewClear(ctx, e);
   }
   await ctx.db.update(customsEntries).set({ status: input.status }).where(eq(customsEntries.id, e.id));
   await recordEvent(ctx, e.shipmentId, {
@@ -253,8 +245,7 @@ export async function upsertCustomsLine(ctx: Ctx, entryId: string, input: z.infe
     await audit(ctx, "customs.line_updated", "customs_line", lineId, { after: input });
     return res[0];
   }
-  const [{ max }] = await ctx.db.select({ max: sql<number>`coalesce(max(${customsLines.lineNumber}), 0)::int` }).from(customsLines).where(eq(customsLines.entryId, e.id));
-  const [row] = await ctx.db.insert(customsLines).values({ entryId: e.id, lineNumber: max + 1, ...input, ...review }).returning();
+  const [row] = await ctx.db.insert(customsLines).values({ entryId: e.id, ...input, ...review }).returning();
   await audit(ctx, "customs.line_added", "customs_line", row.id, { after: input });
   return row;
 }
@@ -328,8 +319,7 @@ export async function runExtraction(db: DB, extractionId: string) {
   try {
     const text = await documentText(await storage().get(ver.storageKey), ver.mimeType);
     const result = await extractFields(text, doc.category);
-    const items = doc.category === "COMMERCIAL_INVOICE" ? await extractLineItems(text) : { items: [], warnings: [] as string[] };
-    await db.update(documentExtractions).set({ status: "COMPLETED", engine: result.engine, fields: result.fields, lineItems: items.items, warnings: [...result.warnings, ...items.warnings] }).where(eq(documentExtractions.id, ex.id));
+    await db.update(documentExtractions).set({ status: "COMPLETED", engine: result.engine, fields: result.fields, warnings: result.warnings }).where(eq(documentExtractions.id, ex.id));
   } catch (err) {
     await db.update(documentExtractions).set({ status: "FAILED", error: String((err as Error).message ?? err).slice(0, 500) }).where(eq(documentExtractions.id, ex.id));
   }

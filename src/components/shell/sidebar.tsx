@@ -1,19 +1,17 @@
 "use client";
 
-import { Building2, CalendarClock, Handshake, Landmark, LayoutDashboard, ListChecks, Menu, Package, PlusCircle, Receipt, ScrollText, Settings, ShieldCheck, Smartphone, Truck, Users, X } from "lucide-react";
+import { Building2, Handshake, Landmark, LayoutDashboard, ListChecks, Menu, Package, PlusCircle, Receipt, ScrollText, Settings, ShieldCheck, Smartphone, Truck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { cx } from "@/components/ui";
 
-const ICONS = { Building2, CalendarClock, Handshake, Landmark, LayoutDashboard, ListChecks, Package, PlusCircle, Receipt, ScrollText, Settings, ShieldCheck, Smartphone, Truck, Users };
+const ICONS = { Building2, Handshake, Landmark, LayoutDashboard, ListChecks, Package, PlusCircle, Receipt, ScrollText, Settings, ShieldCheck, Smartphone, Truck };
 
 export function Sidebar({ items, orgName }: { items: { href: string; label: string; icon: string }[]; orgName: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const matches = (href: string) => path === href || (href !== "/shipments" && path.startsWith(href + "/")) || (href === "/shipments" && /^\/shipments\/(?!new)/.test(path));
-  // When nested items both match (e.g. /customs and /customs/clients), only the most specific is active.
-  const active = (href: string) => matches(href) && !items.some((o) => o.href.length > href.length && o.href.startsWith(href + "/") && matches(o.href));
+  const active = (href: string) => path === href || (href !== "/shipments" && path.startsWith(href + "/")) || (href === "/shipments" && /^\/shipments\/(?!new)/.test(path));
   const list = (
     <nav className="space-y-0.5">
       {items.map((i) => {

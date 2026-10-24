@@ -219,33 +219,12 @@ database's row-level security policies.
 | POST | `/api/v1/shipments/{id}/customs` | `customs.manage` | Open a customs file |
 | GET | `/api/v1/customs/{id}` | `customs.read` | Customs file with documents, extractions, discrepancies |
 | PATCH | `/api/v1/customs/{id}` | `customs.manage` | Update a customs file |
-| POST | `/api/v1/customs/{id}/status` | `customs.manage` | Change customs status. Ready to file and released need `customs.approve`; ready to file also needs every line reviewed and a current pre-filing review with no open blockers |
+| POST | `/api/v1/customs/{id}/status` | `customs.manage` | Change customs status (some require licensed broker) |
 | POST | `/api/v1/customs/{id}/lines` | `customs.manage` | Add a broker-entered line |
 | PATCH | `/api/v1/customs/{id}/lines/{lineId}` | `customs.manage` | Update / mark reviewed (customs.approve) |
 | POST | `/api/v1/customs/{id}/filing` | `customs.approve` | Submit via a filing adapter (ACE not connected; demo adapter available) |
 | POST | `/api/v1/documents/{id}/extractions` | `customs.manage` | Queue AI-assisted extraction |
 | POST | `/api/v1/extractions/{id}/review` | `customs.manage` | Human approval of extracted fields |
-| GET | `/api/v1/customs/dashboard` | `customs.read` | Brokerage desk: KPIs, entry pipeline, deadlines, client alerts, workload |
-| PATCH | `/api/v1/customs/{id}/details` | `customs.manage` | Entry number, entry type, mode, key dates; recomputes deadlines |
-| PATCH | `/api/v1/customs/deadlines/{deadlineId}` | `customs.manage` | Mark a deadline met or reopen it; waiving needs `customs.approve` |
-| GET | `/api/v1/customs/deadline-rules` | `customs.read` | The brokerage's deadline rules, each with its reference |
-| PATCH | `/api/v1/customs/deadline-rules/{ruleId}` | `customs.approve` | Edit a deadline rule; open deadlines are recomputed |
-| POST | `/api/v1/customs/{id}/review` | `customs.manage` | Run the pre-filing review (rule checks plus AI observations with quoted evidence) |
-| POST | `/api/v1/customs/{id}/review/findings` | `customs.manage` | Acknowledge or resolve a finding; blockers need `customs.approve` and a note |
-| GET | `/api/v1/customs/{id}/questions` | `customs.read` | Recent questions asked of this file |
-| POST | `/api/v1/customs/{id}/questions` | `customs.read` + `ai.use` | Ask a question; answered only from the file, with citations |
-| POST | `/api/v1/customs/{id}/charges` | `finance.manage` | Estimated brokerage charges from the client's fee schedule |
-| POST | `/api/v1/customs/{id}/extractions/{extractionId}/lines` | `customs.manage` | Create draft entry lines from extracted invoice line items |
-| POST | `/api/v1/customs/{id}/lines/{lineId}/assist` | `customs.manage` | Classification assist: approved precedents plus unverified AI candidates |
-| POST | `/api/v1/customs/{id}/lines/{lineId}/classification` | `customs.manage` | Apply an approved library classification (the line returns to unreviewed) |
-| POST | `/api/v1/customs/{id}/lines/{lineId}/library` | `customs.approve` | Save a reviewed line to the client's library as approved precedent |
-| GET | `/api/v1/customs/clients` | `customs.read` | Importer clients with POA, bond and library alerts |
-| POST | `/api/v1/customs/clients` | `customs.manage` | Add an importer client |
-| GET | `/api/v1/customs/clients/{clientId}` | `customs.read` | Client profile, classification library and entries |
-| PATCH | `/api/v1/customs/clients/{clientId}` | `customs.manage` | Update bond, fees and notes |
-| POST | `/api/v1/customs/clients/{clientId}/poa` | `customs.manage` | Record or verify a power of attorney; verifying needs `customs.approve` |
-| POST | `/api/v1/customs/classifications` | `customs.manage` | Draft a library classification |
-| POST | `/api/v1/customs/classifications/{itemId}/decision` | `customs.approve` | Approve or retire a library classification |
 
 ### Tasks
 
