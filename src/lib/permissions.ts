@@ -96,6 +96,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "quote.accept",
     "document.upload",
     "message.write",
+    "exception.manage",
     "internal_note.write",
     "tracking_link.manage",
     "customs.read",

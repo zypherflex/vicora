@@ -121,7 +121,7 @@ CREATE POLICY trips_delete ON "trips" FOR DELETE TO vicora_app USING (org_id = a
 --> statement-breakpoint
 ALTER TABLE "shipments" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY shipments_select ON "shipments" FOR SELECT TO vicora_app USING (app_is_party(id) OR app_can_preview(id));
+CREATE POLICY shipments_select ON "shipments" FOR SELECT TO vicora_app USING (owner_org_id = app_org() OR app_is_party(id) OR app_can_preview(id));
 --> statement-breakpoint
 CREATE POLICY shipments_insert ON "shipments" FOR INSERT TO vicora_app  WITH CHECK (owner_org_id = app_org());
 --> statement-breakpoint
@@ -213,7 +213,7 @@ CREATE POLICY shipment_status_history_insert ON "shipment_status_history" FOR IN
 --> statement-breakpoint
 ALTER TABLE "shipment_events" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
-CREATE POLICY shipment_events_select ON "shipment_events" FOR SELECT TO vicora_app USING (app_is_party(shipment_id) AND (visible_to_org_id IS NULL OR visible_to_org_id = app_org()));
+CREATE POLICY shipment_events_select ON "shipment_events" FOR SELECT TO vicora_app USING (visible_to_org_id = app_org() OR (visible_to_org_id IS NULL AND app_is_party(shipment_id)));
 --> statement-breakpoint
 CREATE POLICY shipment_events_insert ON "shipment_events" FOR INSERT TO vicora_app  WITH CHECK (app_is_party(shipment_id) OR app_can_preview(shipment_id));
 --> statement-breakpoint

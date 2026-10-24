@@ -110,7 +110,7 @@ table("equipment", [
 ]);
 table("trips", ALL("org_id = app_org()"));
 table("shipments", [
-  ["SELECT", "app_is_party(id) OR app_can_preview(id)"],
+  ["SELECT", "owner_org_id = app_org() OR app_is_party(id) OR app_can_preview(id)"],
   ["INSERT", null, "owner_org_id = app_org()"],
   ["UPDATE", "app_is_party(id)", "true"],
 ]);
@@ -137,7 +137,8 @@ table("tenders", [
 ]);
 table("shipment_status_history", [["SELECT", viaShipment], ["INSERT", null, viaShipment]]);
 table("shipment_events", [
-  ["SELECT", viaShipment + " AND (visible_to_org_id IS NULL OR visible_to_org_id = app_org())"],
+  // Private events (e.g. a provider's own quote submission) stay readable by their org even before it becomes a party.
+  ["SELECT", "visible_to_org_id = app_org() OR (visible_to_org_id IS NULL AND " + viaShipment + ")"],
   ["INSERT", null, "app_is_party(shipment_id) OR app_can_preview(shipment_id)"],
 ]);
 table("location_pings", [["SELECT", viaShipment], ["INSERT", null, viaShipment]]);
